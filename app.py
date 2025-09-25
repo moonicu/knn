@@ -39,32 +39,45 @@ y_display_en = {
 }
 
 # ======================
-# 사이드바: 언어/모드
+# 사이드바: 언어/모드 (영-한 자동 변환)
 # ======================
 lang = st.sidebar.radio("언어 / Language", ['한국어', 'English'])
 
+# 모드 라벨 사전: 내부키는 고정, 라벨은 언어별
+MODE_OPTIONS = {
+    'pre6': {'ko': '산전 단순 예측 (6개변수)', 'en': 'Prenatal – Simple (6 features)'},
+    'pre':  {'ko': '산전 예측',               'en': 'Prenatal – Full'},
+    'post': {'ko': '산후 예측',               'en': 'Postnatal – Full'},
+}
+
 mode_label = t("예측 모드 / Prediction Mode", "Prediction Mode", lang)
-mode = st.sidebar.radio(
-    mode_label,
-    ['산전 단순 예측 (6개변수)', '산전 예측', '산후 예측'],
-    index=0
-)
+
+# 현재 언어에 맞는 라벨 리스트와 역매핑 구성
+if lang == '한국어':
+    display_labels = [MODE_OPTIONS[k]['ko'] for k in ['pre6', 'pre', 'post']]
+else:
+    display_labels = [MODE_OPTIONS[k]['en'] for k in ['pre6', 'pre', 'post']]
+
+label2key = {MODE_OPTIONS['pre6']['ko']: 'pre6', MODE_OPTIONS['pre6']['en']: 'pre6',
+             MODE_OPTIONS['pre']['ko']:  'pre',  MODE_OPTIONS['pre']['en']:  'pre',
+             MODE_OPTIONS['post']['ko']: 'post', MODE_OPTIONS['post']['en']: 'post'}
+
+selected_label = st.sidebar.radio(mode_label, display_labels, index=0)  # default: pre6
+mode_key = label2key[selected_label]  # 내부 사용 키
 
 # 모드별 리소스 지정
-if mode == '산전 단순 예측 (6개변수)':
+if mode_key == 'pre6':
     model_save_dir = 'saved_models_pre6'
     thresholds_file = 'thresholds_pre6.csv'
-    # 학습 시 사용한 컬럼 순서 반드시 동일
-    x_columns = ['bwei', 'gad', 'mage', 'gran', 'chor', 'sterp']
-elif mode == '산전 예측':
+    x_columns = ['bwei', 'gad', 'mage', 'gran', 'chor', 'sterp']  # 학습 시 컬럼 순서 준수
+elif mode_key == 'pre':
     model_save_dir = 'saved_models_pre'
     thresholds_file = 'thresholds_pre.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
-else:  # 산후 예측
+else:  # 'post'
     model_save_dir = 'saved_models_post'
     thresholds_file = 'thresholds_post.csv'
-    # 필요 시 산후 전용 컬럼으로 교체 가능(현재는 19개 기본)
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
 
@@ -313,7 +326,8 @@ if run_btn:
         if patient_id:
             output = io.StringIO()
             output.write(f"Patient ID: {patient_id}\nDate: {datetime.today().strftime('%Y-%m-%d')}\n")
-            output.write(f"Mode: {mode}\nModel dir: {model_save_dir}\nThreshold file: {thresholds_file}\n\n")
+            output.write(f"Mode: {selected_label}\nModel dir: {model_save_dir}\nThreshold file: {thresholds_file}\n\n")
+
 
             # 입력 정보
             output.write("[입력 정보 / Input Information]\n")
