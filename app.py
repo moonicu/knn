@@ -311,9 +311,10 @@ models = load_best_models(model_save_dir, ALL_Y_COLUMNS)
 
 # (예측 실행 블록 상단, row 딕셔너리 만들기 전에 추가)
 perf_col_xgb = t("모델성능(F1-score, AUPRC, AUC)",
-                 "Model Performance (F1-score, AUPRC, AUC)", lang)
+                 "Model Performance – XGBoost (F1-score, AUPRC, AUC)", lang)
 perf_col_lgb = t("모델성능((F1-score, AUPRC, AUC))",
-                 "Model Performance (F1-score, AUPRC, AUC)", lang)
+                 "Model Performance – LightGBM (F1-score, AUPRC, AUC)", lang)
+
 
 
 def df_auto_height(n_rows: int, max_rows: int = None) -> int:
@@ -329,28 +330,36 @@ def df_auto_height(n_rows: int, max_rows: int = None) -> int:
     return header_px + n_rows * row_px + padding_px
 
 
-def grade_level(f1, auprc, auc):
-    # 등급 규칙
-    if (f1 is not None and auprc is not None and auc is not None and
-        not np.isnan([f1, auprc, auc]).any()):
-        if (f1 >= 0.75) and (auprc >= 0.70) and (auc >= 0.80):
-            return "🟢 High (임상 활용 후보)"
-        elif (f1 >= 0.50) and (auprc >= 0.50) and (auc >= 0.75):
-            return "🟡 Medium (스크리닝/참조)"
-        else:
-            return "🔴 Low (연구/참고용)"
-    return "N/A"
-
+def grade_label_simple(f1, auprc, auc):
+    """표 셀에는 이 간단 등급만 넣습니다."""
+    if (f1 is None) or (auprc is None) or (auc is None) or np.isnan([f1, auprc, auc]).any():
+        return "N/A"
+    if (f1 >= 0.75) and (auprc >= 0.70) and (auc >= 0.80):
+        return "🟢 High"
+    if (f1 >= 0.50) and (auprc >= 0.50) and (auc >= 0.75):
+        return "🟡 Medium"
+    return "🔴 Low"
 
 def perf_string(f1, auprc, auc):
-    # 소수 2자리 + 등급
+    """지표 + 간단 등급(괄호 설명 없이)"""
     if (f1 is None) or (auprc is None) or (auc is None) or np.isnan([f1, auprc, auc]).any():
         core = "F1=N/A, AUPRC=N/A, AUC=N/A"
+        grade = "N/A"
     else:
         core = f"F1={f1:.2f}, AUPRC={auprc:.2f}, AUC={auc:.2f}"
-    return f"{core} {grade_level(f1, auprc, auc)}"
+        grade = grade_label_simple(f1, auprc, auc)
+    return f"{core} — {grade}"
+
+
 
 run_btn = st.button(t("예측 실행", "Run Prediction", lang))
+
+# ===== 범례(legend): 버튼 아래 한 줄로 노출 =====
+legend_ko = "🟢 High (임상 활용 후보), 🟡 Medium (스크리닝/참조), 🔴 Low (연구/참고용)"
+legend_en = "🟢 High (Clinically promising), 🟡 Medium (Screening/reference), 🔴 Low (Research/for reference)"
+legend_text = t(legend_ko, legend_en, lang)
+st.markdown(f"**{legend_text}**")
+
 
 if run_btn:
     if not models:
@@ -366,13 +375,6 @@ if run_btn:
         for y_col in ALL_Y_COLUMNS:
             outcome_name = y_display_names.get(y_col, y_col)
 
-            row = {
-                'Outcome': outcome_name,
-                'XGBoost': "N/A",
-                '모델성능(F1-score, AUPRC, AUC)': "N/A",
-                'LightGBM': "N/A",
-                '모델성능((F1-score, AUPRC, AUC))': "N/A"
-            }
 
             row = {
                 'Outcome': outcome_name,
