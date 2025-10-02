@@ -309,6 +309,13 @@ models = load_best_models(model_save_dir, ALL_Y_COLUMNS)
 # 예측 실행
 # ======================
 
+# (예측 실행 블록 상단, row 딕셔너리 만들기 전에 추가)
+perf_col_xgb = t("모델성능(F1-score, AUPRC, AUC)",
+                 "Model Performance (F1-score, AUPRC, AUC)", lang)
+perf_col_lgb = t("모델성능((F1-score, AUPRC, AUC))",
+                 "Model Performance (F1-score, AUPRC, AUC)", lang)
+
+
 def df_auto_height(n_rows: int, max_rows: int = None) -> int:
     """
     Streamlit dataframe 높이를 행 수에 맞춰 계산.
@@ -321,6 +328,7 @@ def df_auto_height(n_rows: int, max_rows: int = None) -> int:
     padding_px = 16
     return header_px + n_rows * row_px + padding_px
 
+
 def grade_level(f1, auprc, auc):
     # 등급 규칙
     if (f1 is not None and auprc is not None and auc is not None and
@@ -332,6 +340,7 @@ def grade_level(f1, auprc, auc):
         else:
             return "🔴 Low (연구/참고용)"
     return "N/A"
+
 
 def perf_string(f1, auprc, auc):
     # 소수 2자리 + 등급
@@ -365,6 +374,15 @@ if run_btn:
                 '모델성능((F1-score, AUPRC, AUC))': "N/A"
             }
 
+            row = {
+                'Outcome': outcome_name,
+                'XGBoost': "N/A",
+                perf_col_xgb: "N/A",
+                'LightGBM': "N/A",
+                perf_col_lgb: "N/A"
+            }
+
+
             # XGBoost
             key_xgb = (y_col, 'XGBoost')
             if key_xgb in models:
@@ -374,7 +392,8 @@ if run_btn:
                 except Exception:
                     row['XGBoost'] = "N/A"
                 f1, auprc, auc = METRIC_MAP.get((y_col, 'XGBoost'), (None, None, None))
-                row['모델성능(F1-score, AUPRC, AUC)'] = perf_string(f1, auprc, auc)
+                row[perf_col_xgb] = perf_string(f1, auprc, auc)
+
 
             # LightGBM
             key_lgb = (y_col, 'LightGBM')
@@ -385,7 +404,8 @@ if run_btn:
                 except Exception:
                     row['LightGBM'] = "N/A"
                 f1, auprc, auc = METRIC_MAP.get((y_col, 'LightGBM'), (None, None, None))
-                row['모델성능((F1-score, AUPRC, AUC))'] = perf_string(f1, auprc, auc)
+                row[perf_col_lgb] = perf_string(f1, auprc, auc)
+
 
             # 그룹 분리
             if y_col in RESUS_TARGETS:
