@@ -1,6 +1,11 @@
+아래는 요청하신 **전체 통합 코드**입니다. 그대로 교체/실행하시면 됩니다.
+(변경점: threshold 표시/사용 제거, XGBoost·LightGBM 각각 확률 및 성능(F1, AUPRC, AUC) 표시, 등급(🟢/🟡/🔴) 규칙 적용, RandomForest 제외)
+
+```python
 import streamlit as st
 import joblib
 import pandas as pd
+import numpy as np
 import os
 import io
 from datetime import datetime
@@ -65,19 +70,19 @@ label2key = {MODE_OPTIONS['pre6']['ko']: 'pre6', MODE_OPTIONS['pre6']['en']: 'pr
 selected_label = st.sidebar.radio(mode_label, display_labels, index=0)  # default: pre6
 mode_key = label2key[selected_label]  # 내부 사용 키
 
-# 모드별 리소스 지정
+# 모드별 리소스 지정 (metrics_* 파일 사용)
 if mode_key == 'pre6':
     model_save_dir = 'saved_models_pre6'
-    thresholds_file = 'thresholds_pre6.csv'
+    metrics_file = 'metrics_pre6.csv'
     x_columns = ['bwei', 'gad', 'mage', 'gran', 'chor', 'sterp']  # 학습 시 컬럼 순서 준수
 elif mode_key == 'pre':
     model_save_dir = 'saved_models_pre'
-    thresholds_file = 'thresholds_pre.csv'
+    metrics_file = 'metrics_pre.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
 else:  # 'post'
     model_save_dir = 'saved_models_post'
-    thresholds_file = 'thresholds_post.csv'
+    metrics_file = 'metrics_post.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
 
@@ -111,7 +116,6 @@ with col_gawd:
 gad = gaw * 7 + gawd
 
 # 공통 입력(성별/체중) — 필요 시만 노출
-# 성별(1,2,3)과 체중은 일부 모드에서 x_columns에 없을 수 있으므로 조건부 표기
 show_sex = 'sex' in x_columns
 show_bwei = 'bwei' in x_columns
 
@@ -134,7 +138,6 @@ else:
 # 나머지 변수 위젯(모드에서 쓰는 변수만 렌더)
 inputs = {}
 
-# 맵 정의(라벨/옵션)
 def render_if_needed(var):
     if var not in x_columns:
         return
@@ -224,28 +227,50 @@ except KeyError as e:
 patient_id = st.text_input(t("환자 등록번호 (저장시 파일명)", "Patient ID (for download)", lang), max_chars=20)
 
 # ======================
-# Threshold 불러오기
+# 모델 성능(Metrics) 불러오기
 # ======================
+def _safe_float(x):
+    try:
+        return float(x)
+    except Exception:
+        return np.nan
+
 try:
-    threshold_df = pd.read_csv(thresholds_file)
-    # 기대 컬럼: target, model, threshold
-    thresh_map = threshold_df.set_index(['target', 'model'])['threshold'].to_dict()
+    metrics_df = pd.read_csv(metrics_file)
+    # 기대 컬럼: target, model, f1, auprc, auc (대소문자 무관)
+    cols_lower = {c.lower(): c for c in metrics_df.columns}
+    required = ['target', 'model', 'f1', 'auprc', 'auc']
+    if not all(k in cols_lower for k in required):
+        raise ValueError(f"metrics file must include columns: {required}")
+    metrics_df = metrics_df.rename(columns={
+        cols_lower['target']:'target',
+        cols_lower['model']:'model',
+        cols_lower['f1']:'f1',
+        cols_lower['auprc']:'auprc',
+        cols_lower['auc']:'auc'
+    })
+    metrics_df['f1'] = metrics_df['f1'].apply(_safe_float)
+    metrics_df['auprc'] = metrics_df['auprc'].apply(_safe_float)
+    metrics_df['auc'] = metrics_df['auc'].apply(_safe_float)
+    # {(target, model)->(f1, auprc, auc)}
+    METRIC_MAP = {(r['target'], r['model']): (r['f1'], r['auprc'], r['auc'])
+                  for _, r in metrics_df.iterrows()}
 except Exception as e:
-    st.error(t(
-        f"임계값 파일을 불러오지 못했습니다: {thresholds_file}\n{e}",
-        f"Failed to load thresholds file: {thresholds_file}\n{e}",
+    st.warning(t(
+        f"모델 성능 파일을 불러오지 못했습니다: {metrics_file}\n{e}",
+        f"Failed to load metrics file: {metrics_file}\n{e}",
         lang
     ))
-    st.stop()
+    METRIC_MAP = {}
 
 # ======================
-# 모델 로드 (모드별 캐시)
+# 모델 로드 (LightGBM / XGBoost만)
 # ======================
 @st.cache_resource(show_spinner=False)
 def load_best_models(model_dir: str, y_cols: list):
     best_models = {}
     for y_col in y_cols:
-        for model_name in ['LightGBM', 'XGBoost', 'RandomForest']:
+        for model_name in ['LightGBM', 'XGBoost']:  # RandomForest 제외
             path = os.path.join(model_dir, f"best_{model_name}_{y_col}.pkl")
             if os.path.exists(path):
                 try:
@@ -259,6 +284,26 @@ models = load_best_models(model_save_dir, ALL_Y_COLUMNS)
 # ======================
 # 예측 실행
 # ======================
+def grade_level(f1, auprc, auc):
+    # 등급 규칙
+    if (f1 is not None and auprc is not None and auc is not None and
+        not np.isnan([f1, auprc, auc]).any()):
+        if (f1 >= 0.75) and (auprc >= 0.70) and (auc >= 0.80):
+            return "🟢 High (임상 활용 후보)"
+        elif (f1 >= 0.50) and (auprc >= 0.50) and (auc >= 0.75):
+            return "🟡 Medium (스크리닝/참조)"
+        else:
+            return "🔴 Low (연구/참고용)"
+    return "N/A"
+
+def perf_string(f1, auprc, auc):
+    # 소수 2자리 + 등급
+    if (f1 is None) or (auprc is None) or (auc is None) or np.isnan([f1, auprc, auc]).any():
+        core = "F1=N/A, AUPRC=N/A, AUC=N/A"
+    else:
+        core = f"F1={f1:.2f}, AUPRC={auprc:.2f}, AUC={auc:.2f}"
+    return f"{core} {grade_level(f1, auprc, auc)}"
+
 run_btn = st.button(t("예측 실행", "Run Prediction", lang))
 
 if run_btn:
@@ -269,86 +314,90 @@ if run_btn:
             lang
         ))
     else:
-        predictions = {}
-        used_model = {}
-        used_thresh = {}
+        rows_resus = []
+        rows_comp = []
 
         for y_col in ALL_Y_COLUMNS:
-            for model_name in ['LightGBM', 'XGBoost', 'RandomForest']:
-                key = (y_col, model_name)
-                if key in models:
-                    model = models[key]
-                    try:
-                        prob = model.predict_proba(new_X_data)[0, 1]
-                    except Exception:
-                        # 확률 예측 불가 모델은 스킵
-                        continue
-                    thr = thresh_map.get((y_col, model_name), 0.5)
-                    mark = "★" if prob >= thr else ""
-                    predictions[y_col] = {
-                        t('확률(%)', 'Probability (%)', lang): f"{prob*100:.2f}%",
-                        t('플래그', 'Flag', lang): mark,
-                        t('모델', 'Model', lang): model_name,
-                        t('임계값', 'Threshold', lang): f"{thr:.3f}"
-                    }
-                    used_model[y_col] = model_name
-                    used_thresh[y_col] = thr
-                    break  # 우선순위(LGBM→XGB→RF) 중 처음 성공한 모델 사용
+            outcome_name = y_display_names.get(y_col, y_col)
 
-        # 데이터프레임 구성
-        comp_targets = [y for y in ALL_Y_COLUMNS if y not in RESUS_TARGETS]
+            row = {
+                'Outcome': outcome_name,
+                'XGBoost': "N/A",
+                '모델성능(F1-score, AUPRC, AUC)': "N/A",
+                'LightGBM': "N/A",
+                '모델성능((F1-score, AUPRC, AUC))': "N/A"
+            }
 
-        resus_df = pd.DataFrame.from_dict({k: v for k, v in predictions.items() if k in RESUS_TARGETS}, orient='index')
-        comp_df = pd.DataFrame.from_dict({k: v for k, v in predictions.items() if k in comp_targets}, orient='index')
+            # XGBoost
+            key_xgb = (y_col, 'XGBoost')
+            if key_xgb in models:
+                try:
+                    prob_xgb = models[key_xgb].predict_proba(new_X_data)[0, 1]
+                    row['XGBoost'] = f"{prob_xgb*100:.2f}%"
+                except Exception:
+                    row['XGBoost'] = "N/A"
+                f1, auprc, auc = METRIC_MAP.get((y_col, 'XGBoost'), (None, None, None))
+                row['모델성능(F1-score, AUPRC, AUC)'] = perf_string(f1, auprc, auc)
 
-        # 표시 이름 컬럼 추가
-        if not resus_df.empty:
-            resus_df.insert(0, t('항목', 'Outcome', lang), [y_display_names.get(k, k) for k in resus_df.index])
-        if not comp_df.empty:
-            comp_df.insert(0, t('항목', 'Outcome', lang), [y_display_names.get(k, k) for k in comp_df.index])
+            # LightGBM
+            key_lgb = (y_col, 'LightGBM')
+            if key_lgb in models:
+                try:
+                    prob_lgb = models[key_lgb].predict_proba(new_X_data)[0, 1]
+                    row['LightGBM'] = f"{prob_lgb*100:.2f}%"
+                except Exception:
+                    row['LightGBM'] = "N/A"
+                f1, auprc, auc = METRIC_MAP.get((y_col, 'LightGBM'), (None, None, None))
+                row['모델성능((F1-score, AUPRC, AUC))'] = perf_string(f1, auprc, auc)
+
+            # 그룹 분리
+            if y_col in RESUS_TARGETS:
+                rows_resus.append(row)
+            else:
+                rows_comp.append(row)
+
+        # 데이터프레임 만들기
+        resus_df = pd.DataFrame(rows_resus)
+        comp_df = pd.DataFrame(rows_comp)
 
         # 출력
         st.subheader(t("* 신생아 소생술 관련 예측", "* Resuscitation Predictions", lang))
         if resus_df.empty:
             st.info(t("표시할 예측 결과가 없습니다.", "No predictions to display.", lang))
         else:
-            st.dataframe(resus_df.reset_index(drop=True), use_container_width=True)
+            st.dataframe(resus_df, use_container_width=True)
 
         st.subheader(t("* 미숙아 합병증 및 예후 예측", "* Complication Predictions", lang))
         if comp_df.empty:
             st.info(t("표시할 예측 결과가 없습니다.", "No predictions to display.", lang))
         else:
-            st.dataframe(comp_df.reset_index(drop=True), use_container_width=True)
+            st.dataframe(comp_df, use_container_width=True)
 
         # ======================
-        # 결과 TXT 다운로드
+        # 결과 TXT 다운로드 (XGBoost/LightGBM + 성능 함께 기록)
         # ======================
         if patient_id:
             output = io.StringIO()
             output.write(f"Patient ID: {patient_id}\nDate: {datetime.today().strftime('%Y-%m-%d')}\n")
-            output.write(f"Mode: {selected_label}\nModel dir: {model_save_dir}\nThreshold file: {thresholds_file}\n\n")
-
+            output.write(f"Mode: {selected_label}\nModel dir: {model_save_dir}\nMetrics file: {metrics_file}\n\n")
 
             # 입력 정보
             output.write("[입력 정보 / Input Information]\n")
             output.write(f"gaw: {gaw}\n")
             output.write(f"gawd: {gawd}\n")
             output.write(f"gad: {gad}\n")
-            # x_columns 순서대로 기록
             for col in x_columns:
                 if col in inputs:
                     output.write(f"{col}: {inputs[col]}\n")
-            output.write("\n[예측 결과 / Prediction Results]\n")
 
-            # 표형식 문자열
-            if not resus_df.empty:
-                output.write("[Resuscitation Predictions]\n")
-                output.write(resus_df.to_string(index=False))
-                output.write("\n\n")
-            if not comp_df.empty:
-                output.write("[Complication Predictions]\n")
-                output.write(comp_df.to_string(index=False))
-                output.write("\n")
+            def _write_block(title, df):
+                if not df.empty:
+                    output.write(f"\n[{title}]\n")
+                    output.write(df.to_string(index=False))
+                    output.write("\n")
+
+            _write_block("Resuscitation Predictions", resus_df)
+            _write_block("Complication Predictions", comp_df)
 
             st.download_button(
                 label=t("결과 TXT 다운로드", "Download Results TXT", lang),
@@ -356,3 +405,4 @@ if run_btn:
                 file_name=f"{patient_id}_result.txt",
                 mime="text/plain"
             )
+```
