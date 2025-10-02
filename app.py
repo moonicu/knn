@@ -69,16 +69,16 @@ mode_key = label2key[selected_label]  # 내부 사용 키
 # 모드별 리소스 지정 (metrics_* 파일 사용)
 if mode_key == 'pre6':
     model_save_dir = 'saved_models_pre6'
-    metrics_file = 'model_performance_pre6.csv'
+    metrics_file = 'saved_models_pre6/model_performance_pre6.csv'
     x_columns = ['bwei', 'gad', 'mage', 'gran', 'chor', 'sterp']  # 학습 시 컬럼 순서 준수
 elif mode_key == 'pre':
     model_save_dir = 'saved_models_pre'
-    metrics_file = 'model_performance_pre.csv'
+    metrics_file = 'saved_models_pre6/model_performance_pre.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
 else:  # 'post'
     model_save_dir = 'saved_models_post'
-    metrics_file = 'model_performance_post.csv'
+    metrics_file = 'saved_models_pre6/model_performance_post.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
 
