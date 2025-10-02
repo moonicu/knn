@@ -308,6 +308,19 @@ models = load_best_models(model_save_dir, ALL_Y_COLUMNS)
 # ======================
 # 예측 실행
 # ======================
+
+def df_auto_height(n_rows: int, max_rows: int = None) -> int:
+    """
+    Streamlit dataframe 높이를 행 수에 맞춰 계산.
+    기본 행 높이 ~38px, 헤더 ~38px, 약간의 패딩 포함.
+    """
+    if max_rows is not None:
+        n_rows = min(n_rows, max_rows)
+    row_px = 38
+    header_px = 38
+    padding_px = 16
+    return header_px + n_rows * row_px + padding_px
+
 def grade_level(f1, auprc, auc):
     # 등급 규칙
     if (f1 is not None and auprc is not None and auc is not None and
@@ -395,7 +408,10 @@ if run_btn:
         if comp_df.empty:
             st.info(t("표시할 예측 결과가 없습니다.", "No predictions to display.", lang))
         else:
-            st.dataframe(comp_df, use_container_width=True)
+            # 17행까지는 스크롤 없이 한 화면에 보이도록 높이 지정
+            height_comp = df_auto_height(len(comp_df), max_rows=17)
+            st.dataframe(comp_df, use_container_width=True, height=height_comp)
+
 
         # ======================
         # 결과 TXT 다운로드 (XGBoost/LightGBM + 성능 함께 기록)
