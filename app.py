@@ -1,4 +1,3 @@
-
 import streamlit as st
 import joblib
 import pandas as pd
@@ -402,4 +401,3 @@ if run_btn:
                 file_name=f"{patient_id}_result.txt",
                 mime="text/plain"
             )
-```
