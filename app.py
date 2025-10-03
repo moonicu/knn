@@ -48,20 +48,20 @@ lang = st.sidebar.radio("언어 / Language", ['한국어', 'English'])
 MODE_OPTIONS = {
     'pre6': {'ko': '산전 단순 예측 (6개변수)', 'en': 'Prenatal – Simple (6 features)'},
     'pre':  {'ko': '산전 예측',               'en': 'Prenatal – Full'},
-    'post': {'ko': '산후 예측',               'en': 'Postnatal – Full'},
 }
 
 mode_label = t("예측 모드 / Prediction Mode", "Prediction Mode", lang)
 
 # 현재 언어에 맞는 라벨 리스트와 역매핑 구성
 if lang == '한국어':
-    display_labels = [MODE_OPTIONS[k]['ko'] for k in ['pre6', 'pre', 'post']]
+    display_labels = [MODE_OPTIONS[k]['ko'] for k in ['pre6', 'pre']]
 else:
-    display_labels = [MODE_OPTIONS[k]['en'] for k in ['pre6', 'pre', 'post']]
+    display_labels = [MODE_OPTIONS[k]['en'] for k in ['pre6', 'pre']]
 
-label2key = {MODE_OPTIONS['pre6']['ko']: 'pre6', MODE_OPTIONS['pre6']['en']: 'pre6',
-             MODE_OPTIONS['pre']['ko']:  'pre',  MODE_OPTIONS['pre']['en']:  'pre',
-             MODE_OPTIONS['post']['ko']: 'post', MODE_OPTIONS['post']['en']: 'post'}
+label2key = {
+    MODE_OPTIONS['pre6']['ko']: 'pre6', MODE_OPTIONS['pre6']['en']: 'pre6',
+    MODE_OPTIONS['pre']['ko']:  'pre',  MODE_OPTIONS['pre']['en']:  'pre',
+}
 
 selected_label = st.sidebar.radio(mode_label, display_labels, index=0)  # default: pre6
 mode_key = label2key[selected_label]  # 내부 사용 키
@@ -71,17 +71,15 @@ mode_key = label2key[selected_label]  # 내부 사용 키
 if mode_key == 'pre6':
     model_save_dir = 'saved_models_pre6'
     metrics_file = 'saved_models_pre6/model_performance_pre6.csv'
-    x_columns = ['bwei', 'gad', 'mage', 'gran', 'chor', 'sterp']  # 학습 시 컬럼 순서 준수
+    x_columns = ['bwei', 'gad', 'mage', 'gran', 'chor', 'sterp']
 elif mode_key == 'pre':
     model_save_dir = 'saved_models_pre'
     metrics_file = 'saved_models_pre/model_performance_pre.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
-else:  # 'post'
-    model_save_dir = 'saved_models_post'
-    metrics_file = 'saved_models_post/model_performance_post.csv'
-    x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
-                 'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
+else:
+    # 혹시 모를 이상값 방지용(이 분기는 이론상 도달하지 않음)
+    raise ValueError("Invalid mode selection.")
 
 
 
@@ -93,8 +91,8 @@ y_display_names = y_display_ko if lang == '한국어' else y_display_en
 # ======================
 st.title("KNN Neonatal Outcome Predictor")
 st.caption(t(
-    "산전/산후 변수로 신생아 소생술 및 합병증 위험을 예측합니다.",
-    "Predicts neonatal resuscitation and complications from prenatal/postnatal variables.",
+    "산전 변수로 신생아 소생술 및 합병증 위험을 예측합니다.",
+    "Predicts neonatal resuscitation and complications from prenatal variables.",
     lang
 ))
 
@@ -280,8 +278,8 @@ candidate_paths = [
     os.path.join(model_save_dir, os.path.basename(metrics_file)),
     os.path.join(model_save_dir, "model_performance_pre6.csv"),
     os.path.join(model_save_dir, "model_performance_pre.csv"),
-    os.path.join(model_save_dir, "model_performance_post.csv"),
 ]
+
 
 METRIC_MAP = {}
 _loaded = False
