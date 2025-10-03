@@ -453,35 +453,44 @@ if run_btn:
             st.dataframe(comp_df, use_container_width=True, height=height_comp)
 
 
+
+
         # ======================
         # 결과 TXT 다운로드 (XGBoost/LightGBM + 성능 함께 기록)
         # ======================
-        if patient_id:
-            output = io.StringIO()
-            output.write(f"Patient ID: {patient_id}\nDate: {datetime.today().strftime('%Y-%m-%d')}\n")
-            output.write(f"Mode: {selected_label}\nModel dir: {model_save_dir}\nMetrics file: {metrics_file}\n\n")
+        # patient_id가 비어 있어도 버튼은 항상 보이게: 빈 경우 'anonymous'로 대체
+        base_id = (patient_id or "anonymous").strip() or "anonymous"
+        stamp = datetime.today().strftime('%Y%m%d_%H%M')
+        fname = f"{base_id}_{mode_key}_result_{stamp}.txt"
 
-            # 입력 정보
-            output.write("[입력 정보 / Input Information]\n")
-            output.write(f"gaw: {gaw}\n")
-            output.write(f"gawd: {gawd}\n")
-            output.write(f"gad: {gad}\n")
-            for col in x_columns:
-                if col in inputs:
-                    output.write(f"{col}: {inputs[col]}\n")
+        output = io.StringIO()
+        output.write(f"Patient ID: {base_id}\nDate: {datetime.today().strftime('%Y-%m-%d')}\n")
+        output.write(f"Mode: {selected_label}\nModel dir: {model_save_dir}\nMetrics file: {metrics_file}\n\n")
 
-            def _write_block(title, df):
-                if not df.empty:
-                    output.write(f"\n[{title}]\n")
-                    output.write(df.to_string(index=False))
-                    output.write("\n")
+        # 입력 정보
+        output.write("[입력 정보 / Input Information]\n")
+        output.write(f"gaw: {gaw}\n")
+        output.write(f"gawd: {gawd}\n")
+        output.write(f"gad: {gad}\n")
+        for col in x_columns:
+            if col in inputs:
+                output.write(f"{col}: {inputs[col]}\n")
 
-            _write_block("Resuscitation Predictions", resus_df)
-            _write_block("Complication Predictions", comp_df)
+        def _write_block(title, df):
+            output.write(f"\n[{title}]\n")
+            if df.empty:
+                output.write("(no rows)\n")
+            else:
+                output.write(df.to_string(index=False))
+                output.write("\n")
 
-            st.download_button(
-                label=t("결과 TXT 다운로드", "Download Results TXT", lang),
-                data=output.getvalue(),
-                file_name=f"{patient_id}_result.txt",
-                mime="text/plain"
-            )
+        _write_block("Resuscitation Predictions", resus_df)
+        _write_block("Complication Predictions", comp_df)
+
+        st.download_button(
+            label=t("결과 TXT 다운로드", "Download Results TXT", lang),
+            data=output.getvalue(),
+            file_name=fname,
+            mime="text/plain",
+            use_container_width=True
+        )
