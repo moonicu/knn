@@ -544,31 +544,7 @@ if run_btn:
         fname_results_csv = f"{base_id}_{mode_key}_results_{stamp}.csv"
         fname_both_csv    = f"{base_id}_{mode_key}_inputs_results_{stamp}.csv"
 
-        # 1) 결과만 CSV
-        results_csv_df = _results_csv_df(resus_df, comp_df)
-        buf_results = BytesIO()
-        results_csv_df.to_csv(buf_results, index=False, encoding="utf-8-sig")
-        st.download_button(
-            label=t("결과 CSV 다운로드", "Download CSV (Results only)", lang),
-            data=buf_results.getvalue(),
-            file_name=fname_results_csv,
-            mime="text/csv",
-            use_container_width=True
-        )
-
-        # 2) 입력만 CSV
-        inputs_csv_df = _inputs_csv_df()
-        buf_inputs = BytesIO()
-        inputs_csv_df.to_csv(buf_inputs, index=False, encoding="utf-8-sig")
-        st.download_button(
-            label=t("입력 CSV 다운로드", "Download CSV (Inputs only)", lang),
-            data=buf_inputs.getvalue(),
-            file_name=fname_inputs_csv,
-            mime="text/csv",
-            use_container_width=True
-        )
-
-        # 3) 입력+결과 (한 파일)
+        # 입력+결과
         buf_both = BytesIO()
         with io.StringIO() as s:
             s.write("### INPUTS ###\n")
@@ -578,7 +554,7 @@ if run_btn:
             payload = s.getvalue()
         buf_both.write(payload.encode("utf-8-sig"))
         st.download_button(
-            label=t("입력+결과 CSV 다운로드(1파일)", "Download CSV (Inputs + Results, single file)", lang),
+            label=t("입력+결과 CSV 다운로드", "Download CSV (Inputs + Results)", lang),
             data=buf_both.getvalue(),
             file_name=fname_both_csv,
             mime="text/csv",
