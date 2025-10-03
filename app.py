@@ -456,16 +456,15 @@ if run_btn:
 
 
         # ======================
-        # 결과 TXT 다운로드 (XGBoost/LightGBM + 성능 함께 기록)
+        # 결과 TXT 다운로드 (모델 성능 제외: 예측 결과만 기록)
         # ======================
-        # patient_id가 비어 있어도 버튼은 항상 보이게: 빈 경우 'anonymous'로 대체
         base_id = (patient_id or "anonymous").strip() or "anonymous"
         stamp = datetime.today().strftime('%Y%m%d_%H%M')
         fname = f"{base_id}_{mode_key}_result_{stamp}.txt"
 
         output = io.StringIO()
         output.write(f"Patient ID: {base_id}\nDate: {datetime.today().strftime('%Y-%m-%d')}\n")
-        output.write(f"Mode: {selected_label}\nModel dir: {model_save_dir}\nMetrics file: {metrics_file}\n\n")
+        output.write(f"Mode: {selected_label}\nModel dir: {model_save_dir}\n\n")
 
         # 입력 정보
         output.write("[입력 정보 / Input Information]\n")
@@ -481,7 +480,10 @@ if run_btn:
             if df.empty:
                 output.write("(no rows)\n")
             else:
-                output.write(df.to_string(index=False))
+                # 모델 성능 컬럼 제외하고 저장
+                exclude_cols = [c for c in df.columns if "모델성능" in c or "Performance" in c]
+                df_out = df.drop(columns=exclude_cols, errors="ignore")
+                output.write(df_out.to_string(index=False))
                 output.write("\n")
 
         _write_block("Resuscitation Predictions", resus_df)
@@ -494,3 +496,5 @@ if run_btn:
             mime="text/plain",
             use_container_width=True
         )
+
+    
