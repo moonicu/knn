@@ -1,3 +1,7 @@
+### post 포함한 버전
+### post x 값 재설정 필요. 사용불가. 참고용
+
+
 import streamlit as st
 import joblib
 import pandas as pd
