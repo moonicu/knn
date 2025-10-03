@@ -328,11 +328,11 @@ models = load_best_models(model_save_dir, ALL_Y_COLUMNS)
 # 예측 실행
 # ======================
 
-# (예측 실행 블록 상단, row 딕셔너리 만들기 전에 추가)
-perf_col_xgb = t("모델성능(F1-score, AUPRC, AUC)",
-                 "Model Performance – XGBoost (F1-score, AUPRC, AUC)", lang)
-perf_col_lgb = t("모델성능(F1-score, AUPRC, AUC)",
-                 "Model Performance – LightGBM (F1-score, AUPRC, AUC)", lang)
+# (예측 실행 블록 상단, row 딕셔너리 만들기 전에) — 이 두 줄을 교체
+perf_col_xgb = t("모델성능(XGBoost: F1, AUPRC, AUC)",
+                 "Model Performance – XGBoost (F1, AUPRC, AUC)", lang)
+perf_col_lgb = t("모델성능(LightGBM: F1, AUPRC, AUC)",
+                 "Model Performance – LightGBM (F1, AUPRC, AUC)", lang)
 
 
 def df_auto_height(n_rows: int, max_rows: int = None) -> int:
