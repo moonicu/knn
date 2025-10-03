@@ -66,6 +66,7 @@ label2key = {MODE_OPTIONS['pre6']['ko']: 'pre6', MODE_OPTIONS['pre6']['en']: 'pr
 selected_label = st.sidebar.radio(mode_label, display_labels, index=0)  # default: pre6
 mode_key = label2key[selected_label]  # 내부 사용 키
 
+
 # 모드별 리소스 지정 (metrics_* 파일 사용)
 if mode_key == 'pre6':
     model_save_dir = 'saved_models_pre6'
@@ -73,14 +74,16 @@ if mode_key == 'pre6':
     x_columns = ['bwei', 'gad', 'mage', 'gran', 'chor', 'sterp']  # 학습 시 컬럼 순서 준수
 elif mode_key == 'pre':
     model_save_dir = 'saved_models_pre'
-    metrics_file = 'saved_models_pre6/model_performance_pre.csv'
+    metrics_file = 'saved_models_pre/model_performance_pre.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
 else:  # 'post'
     model_save_dir = 'saved_models_post'
-    metrics_file = 'saved_models_pre6/model_performance_post.csv'
+    metrics_file = 'saved_models_post/model_performance_post.csv'
     x_columns = ['mage', 'gran', 'parn', 'amni', 'mulg', 'bir', 'prep', 'dm', 'htn', 'chor',
                  'prom', 'ster', 'sterp', 'sterd', 'atbyn', 'delm', 'gad', 'sex', 'bwei']
+
+
 
 # y 표시 이름
 y_display_names = y_display_ko if lang == '한국어' else y_display_en
@@ -222,8 +225,9 @@ except KeyError as e:
 # 환자 식별자
 patient_id = st.text_input(t("환자 등록번호 (저장시 파일명)", "Patient ID (for download)", lang), max_chars=20)
 
+
 # ======================
-# 모델 성능(Metrics) 불러오기 — 사용 파일 열 구조에 맞춘 전용 로더
+# 모델 성능(Metrics) 불러오기 — 모드별(metrics_file)로 정확히 로드
 # ======================
 import re
 import numpy as np
@@ -242,50 +246,65 @@ def _std_model_name(x: str) -> str:
         return "LightGBM"
     if s in {"xgboost", "xgb", "xg-boost"}:
         return "XGBoost"
-    return x.strip()  # 그 외는 원문 유지
+    return x.strip()
 
-try:
-    # 업로드하신 파일명을 그대로 사용 (pre6 모드)
-    metrics_path = os.path.join(model_save_dir, 'model_performance_pre6.csv')
-
-    # 콤마/탭 자동 감지
-    metrics_df_raw = pd.read_csv(metrics_path, sep=None, engine="python")
-
-    # 기대 컬럼 존재 확인 (대소문자/공백 허용)
-    cols_norm = {re.sub(r'\s+', '', c).strip().lower(): c for c in metrics_df_raw.columns}
+def _load_metrics_df(path: str):
+    # 구분자 자동 감지
+    df_raw = pd.read_csv(path, sep=None, engine="python")
+    # 기대 컬럼 매핑(대소문자/공백 제거 후 표준화)
+    cols_norm = {re.sub(r'\s+', '', c).strip().lower(): c for c in df_raw.columns}
     need = {"target", "model", "f1_binary", "auc", "auprc"}
+    # f1 컬럼명이 f1 / f1_binary 혼재할 수 있어 보완
+    if "f1" in cols_norm and "f1_binary" not in cols_norm:
+        cols_norm["f1_binary"] = cols_norm["f1"]
     if not need.issubset(set(cols_norm.keys())):
         missing = need - set(cols_norm.keys())
-        raise ValueError(f"필수 컬럼 누락: {sorted(missing)}  (필요: {sorted(list(need))})")
+        raise ValueError(f"필수 컬럼 누락: {sorted(missing)} (필요: {sorted(list(need))})")
 
-    # 필요한 컬럼만 표준 키로 리네임
-    metrics_df = metrics_df_raw.rename(columns={
+    df = df_raw.rename(columns={
         cols_norm["target"]: "target",
         cols_norm["model"]: "model",
         cols_norm["f1_binary"]: "f1",
         cols_norm["auc"]: "auc",
         cols_norm["auprc"]: "auprc",
     })
-
-    # 모델명 표준화
-    metrics_df["model"] = metrics_df["model"].apply(_std_model_name)
-
-    # 숫자 캐스팅
+    # 표준화
+    df["model"] = df["model"].apply(_std_model_name)
     for m in ["f1", "auprc", "auc"]:
-        metrics_df[m] = metrics_df[m].apply(_safe_float)
+        df[m] = df[m].apply(_safe_float)
+    return df
 
-    # {(target, model) -> (f1, auprc, auc)}
-    METRIC_MAP = {(str(r["target"]), str(r["model"])): (r["f1"], r["auprc"], r["auc"])
-                  for _, r in metrics_df.iterrows()}
+# 우선순위: 지정된 metrics_file → 모델 디렉토리 내 기본 파일명들 폴백
+candidate_paths = [
+    metrics_file,
+    os.path.join(model_save_dir, os.path.basename(metrics_file)),
+    os.path.join(model_save_dir, "model_performance_pre6.csv"),
+    os.path.join(model_save_dir, "model_performance_pre.csv"),
+    os.path.join(model_save_dir, "model_performance_post.csv"),
+]
 
-except Exception as e:
+METRIC_MAP = {}
+_loaded = False
+for cand in candidate_paths:
+    if os.path.exists(cand):
+        try:
+            metrics_df = _load_metrics_df(cand)
+            METRIC_MAP = {
+                (str(r["target"]), str(r["model"])): (r["f1"], r["auprc"], r["auc"])
+                for _, r in metrics_df.iterrows()
+            }
+            _loaded = True
+            break
+        except Exception as e:
+            # 다음 후보 경로 시도
+            continue
+
+if not _loaded:
     st.warning(t(
-        f"모델 성능 파일을 불러오지 못했습니다: {os.path.join(model_save_dir, 'model_performance_pre6.csv')}\n{e}",
-        f"Failed to load metrics file: {os.path.join(model_save_dir, 'model_performance_pre6.csv')}\n{e}",
+        f"모델 성능 파일을 불러오지 못했습니다: {metrics_file}",
+        f"Failed to load metrics file: {metrics_file}",
         lang
     ))
-    METRIC_MAP = {}
-
 
 # ======================
 # 모델 로드 (LightGBM / XGBoost만)
@@ -312,9 +331,8 @@ models = load_best_models(model_save_dir, ALL_Y_COLUMNS)
 # (예측 실행 블록 상단, row 딕셔너리 만들기 전에 추가)
 perf_col_xgb = t("모델성능(F1-score, AUPRC, AUC)",
                  "Model Performance – XGBoost (F1-score, AUPRC, AUC)", lang)
-perf_col_lgb = t("모델성능((F1-score, AUPRC, AUC))",
+perf_col_lgb = t("모델성능(F1-score, AUPRC, AUC)",
                  "Model Performance – LightGBM (F1-score, AUPRC, AUC)", lang)
-
 
 
 def df_auto_height(n_rows: int, max_rows: int = None) -> int:
