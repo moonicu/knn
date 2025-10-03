@@ -498,9 +498,8 @@ if run_btn:
         )
 
 
-        
-        # ======================
-        # 결과 CSV 다운로드 (모델 성능 제외)
+         # ======================
+        # 입력+결과 CSV 다운로드 (모델 성능 컬럼 제외, 1파일)
         # ======================
         from io import BytesIO
 
@@ -540,21 +539,29 @@ if run_btn:
         # 파일명
         base_id = (patient_id or "anonymous").strip() or "anonymous"
         stamp = datetime.today().strftime('%Y%m%d_%H%M')
-        fname_inputs_csv  = f"{base_id}_{mode_key}_inputs_{stamp}.csv"
-        fname_results_csv = f"{base_id}_{mode_key}_results_{stamp}.csv"
-        fname_both_csv    = f"{base_id}_{mode_key}_inputs_results_{stamp}.csv"
+        fname_both_csv = f"{base_id}_{mode_key}_inputs_results_{stamp}.csv"
 
-        # 입력+결과
+        # 생성
+        inputs_csv_df  = _inputs_csv_df()
+        results_csv_df = _results_csv_df(resus_df, comp_df)
+
         buf_both = BytesIO()
         with io.StringIO() as s:
             s.write("### INPUTS ###\n")
-            inputs_csv_df.to_csv(s, index=False)
+            if not inputs_csv_df.empty:
+                inputs_csv_df.to_csv(s, index=False)
+            else:
+                s.write("(no rows)\n")
             s.write("\n### RESULTS ###\n")
-            results_csv_df.to_csv(s, index=False)
+            if not results_csv_df.empty:
+                results_csv_df.to_csv(s, index=False)
+            else:
+                s.write("(no rows)\n")
             payload = s.getvalue()
         buf_both.write(payload.encode("utf-8-sig"))
+
         st.download_button(
-            label=t("입력+결과 CSV 다운로드", "Download CSV (Inputs + Results)", lang),
+            label=t("CSV 다운로드", "Download CSV", lang),
             data=buf_both.getvalue(),
             file_name=fname_both_csv,
             mime="text/csv",
