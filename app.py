@@ -497,88 +497,90 @@ if run_btn:
             use_container_width=True
         )
 
-            # ======================
-            # 결과 CSV 다운로드 (모델 성능 제외)
-            # ======================
-            from io import BytesIO
-            
-            def _drop_perf_cols(df: pd.DataFrame) -> pd.DataFrame:
-                if df.empty:
-                    return df.copy()
-                perf_cols = [c for c in df.columns if ("모델성능" in c) or ("Performance" in c)]
-                return df.drop(columns=perf_cols, errors="ignore")
-            
-            def _results_csv_df(resus_df: pd.DataFrame, comp_df: pd.DataFrame) -> pd.DataFrame:
-                r = _drop_perf_cols(resus_df).copy()
-                c = _drop_perf_cols(comp_df).copy()
-                if not r.empty:
-                    r.insert(0, "Group", "Resuscitation")
-                if not c.empty:
-                    c.insert(0, "Group", "Complication")
-                # 컬럼 정렬: Outcome, XGBoost, LightGBM 우선
-                def _order(df):
-                    cols = list(df.columns)
-                    order = [c for c in ["Group", "Outcome", "XGBoost", "LightGBM"] if c in cols]
-                    rest = [c for c in cols if c not in order]
-                    return df[order + rest]
-                if not r.empty: r = _order(r)
-                if not c.empty: c = _order(c)
-                return pd.concat([r, c], axis=0, ignore_index=True)
-            
-            def _inputs_csv_df() -> pd.DataFrame:
-                row = {"gaw": gaw, "gawd": gawd, "gad": gad}
-                for col in x_columns:
-                    if col in inputs:
-                        row[col] = inputs[col]
-                df = pd.DataFrame([row])
-                ordered_cols = [c for c in ["gaw", "gawd", "gad"] if c in df.columns] + [c for c in x_columns if c in df.columns]
-                ordered_cols = [c for c in ordered_cols if c in df.columns]
-                return df[ordered_cols]
-            
-            # 파일명
-            base_id = (patient_id or "anonymous").strip() or "anonymous"
-            stamp = datetime.today().strftime('%Y%m%d_%H%M')
-            fname_inputs_csv  = f"{base_id}_{mode_key}_inputs_{stamp}.csv"
-            fname_results_csv = f"{base_id}_{mode_key}_results_{stamp}.csv"
-            fname_both_csv    = f"{base_id}_{mode_key}_inputs_results_{stamp}.csv"
-            
-            # 1) 결과만 CSV
-            results_csv_df = _results_csv_df(resus_df, comp_df)
-            buf_results = BytesIO()
-            results_csv_df.to_csv(buf_results, index=False, encoding="utf-8-sig")
-            st.download_button(
-                label=t("결과 CSV 다운로드", "Download CSV (Results only)", lang),
-                data=buf_results.getvalue(),
-                file_name=fname_results_csv,
-                mime="text/csv",
-                use_container_width=True
-            )
-            
-            # 2) 입력만 CSV
-            inputs_csv_df = _inputs_csv_df()
-            buf_inputs = BytesIO()
-            inputs_csv_df.to_csv(buf_inputs, index=False, encoding="utf-8-sig")
-            st.download_button(
-                label=t("입력 CSV 다운로드", "Download CSV (Inputs only)", lang),
-                data=buf_inputs.getvalue(),
-                file_name=fname_inputs_csv,
-                mime="text/csv",
-                use_container_width=True
-            )
-            
-            # 3) 입력+결과 (한 파일)
-            buf_both = BytesIO()
-            with io.StringIO() as s:
-                s.write("### INPUTS ###\n")
-                inputs_csv_df.to_csv(s, index=False)
-                s.write("\n### RESULTS ###\n")
-                results_csv_df.to_csv(s, index=False)
-                payload = s.getvalue()
-            buf_both.write(payload.encode("utf-8-sig"))
-            st.download_button(
-                label=t("입력+결과 CSV 다운로드(1파일)", "Download CSV (Inputs + Results, single file)", lang),
-                data=buf_both.getvalue(),
-                file_name=fname_both_csv,
-                mime="text/csv",
-                use_container_width=True
-            )
+
+        
+        # ======================
+        # 결과 CSV 다운로드 (모델 성능 제외)
+        # ======================
+        from io import BytesIO
+
+        def _drop_perf_cols(df: pd.DataFrame) -> pd.DataFrame:
+            if df.empty:
+                return df.copy()
+            perf_cols = [c for c in df.columns if ("모델성능" in c) or ("Performance" in c)]
+            return df.drop(columns=perf_cols, errors="ignore")
+
+        def _results_csv_df(resus_df: pd.DataFrame, comp_df: pd.DataFrame) -> pd.DataFrame:
+            r = _drop_perf_cols(resus_df).copy()
+            c = _drop_perf_cols(comp_df).copy()
+            if not r.empty:
+                r.insert(0, "Group", "Resuscitation")
+            if not c.empty:
+                c.insert(0, "Group", "Complication")
+            # 컬럼 정렬: Outcome, XGBoost, LightGBM 우선
+            def _order(df):
+                cols = list(df.columns)
+                order = [c for c in ["Group", "Outcome", "XGBoost", "LightGBM"] if c in cols]
+                rest = [c for c in cols if c not in order]
+                return df[order + rest]
+            if not r.empty: r = _order(r)
+            if not c.empty: c = _order(c)
+            return pd.concat([r, c], axis=0, ignore_index=True)
+
+        def _inputs_csv_df() -> pd.DataFrame:
+            row = {"gaw": gaw, "gawd": gawd, "gad": gad}
+            for col in x_columns:
+                if col in inputs:
+                    row[col] = inputs[col]
+            df = pd.DataFrame([row])
+            ordered_cols = [c for c in ["gaw", "gawd", "gad"] if c in df.columns] + [c for c in x_columns if c in df.columns]
+            ordered_cols = [c for c in ordered_cols if c in df.columns]
+            return df[ordered_cols]
+
+        # 파일명
+        base_id = (patient_id or "anonymous").strip() or "anonymous"
+        stamp = datetime.today().strftime('%Y%m%d_%H%M')
+        fname_inputs_csv  = f"{base_id}_{mode_key}_inputs_{stamp}.csv"
+        fname_results_csv = f"{base_id}_{mode_key}_results_{stamp}.csv"
+        fname_both_csv    = f"{base_id}_{mode_key}_inputs_results_{stamp}.csv"
+
+        # 1) 결과만 CSV
+        results_csv_df = _results_csv_df(resus_df, comp_df)
+        buf_results = BytesIO()
+        results_csv_df.to_csv(buf_results, index=False, encoding="utf-8-sig")
+        st.download_button(
+            label=t("결과 CSV 다운로드", "Download CSV (Results only)", lang),
+            data=buf_results.getvalue(),
+            file_name=fname_results_csv,
+            mime="text/csv",
+            use_container_width=True
+        )
+
+        # 2) 입력만 CSV
+        inputs_csv_df = _inputs_csv_df()
+        buf_inputs = BytesIO()
+        inputs_csv_df.to_csv(buf_inputs, index=False, encoding="utf-8-sig")
+        st.download_button(
+            label=t("입력 CSV 다운로드", "Download CSV (Inputs only)", lang),
+            data=buf_inputs.getvalue(),
+            file_name=fname_inputs_csv,
+            mime="text/csv",
+            use_container_width=True
+        )
+
+        # 3) 입력+결과 (한 파일)
+        buf_both = BytesIO()
+        with io.StringIO() as s:
+            s.write("### INPUTS ###\n")
+            inputs_csv_df.to_csv(s, index=False)
+            s.write("\n### RESULTS ###\n")
+            results_csv_df.to_csv(s, index=False)
+            payload = s.getvalue()
+        buf_both.write(payload.encode("utf-8-sig"))
+        st.download_button(
+            label=t("입력+결과 CSV 다운로드(1파일)", "Download CSV (Inputs + Results, single file)", lang),
+            data=buf_both.getvalue(),
+            file_name=fname_both_csv,
+            mime="text/csv",
+            use_container_width=True
+        )
